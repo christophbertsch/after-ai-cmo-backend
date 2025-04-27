@@ -1,4 +1,4 @@
-import { formidable } from 'formidable';   // <<== Correct
+import formidable from 'formidable';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,9 +14,9 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  // CORS headers
+  // ✅ Set CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app'); 
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
 
@@ -29,7 +29,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const form = formidable({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });   // <<== No `new`, call directly
+  // ✅ Setup Formidable
+  const form = new formidable.IncomingForm({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
