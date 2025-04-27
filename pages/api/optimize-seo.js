@@ -88,9 +88,9 @@ export default async function handler(req, res) {
     res.status(200).json({
       seo: optimizedProducts,
       report: {
-        totalProducts: products.length,
-        optimizedCount: optimizedProducts.length,
-        optimizedFile: seoFileName,
+         totalProducts: optimizedProducts.length,
+    changesMade: optimizedProducts.length, // This exact key is needed!
+    optimizedFile: seoFileName,
       },
     });
   } catch (error) {
