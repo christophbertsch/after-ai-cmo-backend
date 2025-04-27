@@ -1,4 +1,4 @@
-import formidable from 'formidable';
+import { formidable } from 'formidable';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,9 +14,9 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  // ✅ Set CORS Headers
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app'); 
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
 
@@ -29,8 +29,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  // ✅ Setup Formidable
-  const form = new formidable.IncomingForm({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
+  const form = formidable({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
@@ -38,14 +37,14 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: 'Upload failed during file parse' });
     }
 
-    const file = files.file;
+    const uploadedFile = files.file; // Formidable v3 returns an array sometimes
 
-    if (!file) {
+    if (!uploadedFile) {
       console.error('No file received!');
       return res.status(400).json({ message: 'No file received!' });
     }
 
-    const filePath = file.filepath || file.path;
+    const filePath = uploadedFile.filepath || uploadedFile[0]?.filepath || uploadedFile[0]?.path;
 
     if (!filePath) {
       console.error('No filePath found!');
@@ -56,8 +55,8 @@ export default async function handler(req, res) {
       const { data, error } = await supabase
         .storage
         .from(process.env.SUPABASE_BUCKET)
-        .upload(`uploads/${file.originalFilename}`, fs.createReadStream(filePath), {
-          contentType: file.mimetype,
+        .upload(`uploads/${uploadedFile.originalFilename}`, fs.createReadStream(filePath), {
+          contentType: uploadedFile.mimetype,
         });
 
       if (error) {
