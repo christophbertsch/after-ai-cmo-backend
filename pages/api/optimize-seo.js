@@ -7,12 +7,20 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 export default async function handler(req, res) {
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
 
+  // Handle Preflight OPTIONS Request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -23,17 +31,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch the latest uploaded file from Supabase
-    const { data } = await supabase
+    const { data, error } = await supabase
       .storage
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    const latestFile = data[0];
-    if (!latestFile) {
-      return res.status(404).json({ message: 'No uploaded file found' });
+    if (error || !data || data.length === 0) {
+      console.error('Supabase list error or no file found:', error);
+      return res.status(500).json({ message: 'No catalog file found in Supabase.' });
     }
 
+    const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
     const fileRes = await fetch(fileUrl);
     const text = await fileRes.text();
