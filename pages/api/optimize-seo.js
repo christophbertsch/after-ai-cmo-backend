@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import Papa from 'papaparse';
 import xml2js from 'xml2js';
+import * as XLSX from 'xlsx';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -38,11 +39,13 @@ export default async function handler(req, res) {
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
     const response = await fetch(fileUrl, { duplex: 'half' });
-    const text = await response.text();
+
+    const buffer = await response.arrayBuffer();
 
     let products = [];
 
     if (latestFile.name.endsWith('.csv')) {
+      const text = Buffer.from(buffer).toString('utf-8');
       const parsed = Papa.parse(text, { header: true });
       products = parsed.data.map(({ article_number, short_description, brand }) => ({
         ProductID: article_number,
@@ -50,12 +53,24 @@ export default async function handler(req, res) {
         Manufacturer: brand,
       }));
     } else if (latestFile.name.endsWith('.xml')) {
-      const parsed = await xml2js.parseStringPromise(text);
-      products = parsed?.BMECAT?.T_NEW_CATALOG?.[0]?.ARTICLE?.map(article => ({
-        ProductID: article.SUPPLIER_AID?.[0] || '',
-        ShortText: article.ARTICLE_DETAILS?.[0]?.DESCRIPTION_SHORT?.[0] || '',
-        Manufacturer: article.ARTICLE_DETAILS?.[0]?.MANUFACTURER_NAME?.[0] || '',
-      })) || [];
+      const text = Buffer.from(buffer).toString('utf-8');
+      const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
+      const items = parsed?.PIES?.Items?.Item || [];
+      products = Array.isArray(items) ? items.map(item => ({
+        ProductID: item.PartNumber || '',
+        ShortText: item.PartTerminology || item.Description || '',
+        Manufacturer: item.BrandAAIAID || item.BrandLabel || '',
+      })) : [];
+    } else if (latestFile.name.endsWith('.xlsx')) {
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      products = rows.map(row => ({
+        ProductID: row.article_number || '',
+        ShortText: row.short_description || '',
+        Manufacturer: row.brand || '',
+      }));
     }
 
     res.status(200).json({ seo: products });
