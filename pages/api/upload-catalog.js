@@ -29,31 +29,47 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const form = new formidable.IncomingForm({ multiples: false });
-  form.uploadDir = '/tmp';
-  form.keepExtensions = true;
+  const form = new formidable.IncomingForm({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error(err);
-      return res.status(500).json({ message: 'Upload failed' });
+      console.error('Formidable parsing error:', err);
+      return res.status(500).json({ message: 'Upload failed during file parse' });
     }
 
     const file = files.file;
-    const tempPath = file.filepath;
-
-    const { data, error } = await supabase
-      .storage
-      .from(process.env.SUPABASE_BUCKET)
-      .upload(file.originalFilename, fs.createReadStream(tempPath), {
-        contentType: file.mimetype,
-      });
-
-    if (error) {
-      console.error('Supabase upload error:', error);
-      return res.status(500).json({ message: 'Supabase upload failed' });
+    
+    if (!file) {
+      console.error('No file received!');
+      return res.status(400).json({ message: 'No file received!' });
     }
 
-    res.status(200).json({ message: 'Upload successful!' });
+    const filePath = file.filepath || file.path;
+
+    if (!filePath) {
+      console.error('No filePath found!');
+      return res.status(500).json({ message: 'Uploaded file is missing path' });
+    }
+
+    try {
+      // ✅ Upload into "uploads/" folder inside Supabase bucket
+      const { data, error } = await supabase
+        .storage
+        .from(process.env.SUPABASE_BUCKET)
+        .upload(`uploads/${file.originalFilename}`, fs.createReadStream(filePath), {
+          contentType: file.mimetype,
+          upsert: true, // Optional: allows overwriting if filename already exists
+        });
+
+      if (error) {
+        console.error('Supabase upload error:', error);
+        return res.status(500).json({ message: 'Supabase upload failed' });
+      }
+
+      res.status(200).json({ message: '✅ Upload successful!' });
+    } catch (err) {
+      console.error('Supabase upload exception:', err);
+      res.status(500).json({ message: 'Upload failed' });
+    }
   });
 }
