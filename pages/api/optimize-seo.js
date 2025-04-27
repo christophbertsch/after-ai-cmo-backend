@@ -58,8 +58,8 @@ export default async function handler(req, res) {
       const items = parsed?.PIES?.Items?.Item || [];
       products = Array.isArray(items) ? items.map(item => ({
         ProductID: item.PartNumber || '',
-        ShortText: item.PartTerminology || item.Description || '',
-        Manufacturer: item.BrandAAIAID || item.BrandLabel || '',
+        ShortText: item.PartTerminologyID || '',
+        Manufacturer: item.BrandLabel || '',
       })) : [];
     } else if (latestFile.name.endsWith('.xlsx')) {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
