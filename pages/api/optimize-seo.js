@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       const originalDesc = item.PartTerminologyID || '';
       const embedding = await generateEmbedding(originalDesc);
 
-      const searchResult = await qdrant.search('products', {
+      const searchResult = await qdrant.search('after_ai_products', {
         vector: embedding,
         limit: 1,
       });
