@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     const optimizedProducts = [];
 
     for (const item of items) {
-      const originalDesc = item.PartTerminologyID || '';
+      const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''}`.trim();
       const embedding = await generateEmbedding(originalDesc);
 
       const searchResult = await qdrant.search('after_ai_products', {
