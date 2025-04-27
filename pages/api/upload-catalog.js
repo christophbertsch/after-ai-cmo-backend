@@ -14,7 +14,6 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -29,7 +28,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const form = new formidable.IncomingForm({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
+  const form = formidable({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
@@ -38,7 +37,7 @@ export default async function handler(req, res) {
     }
 
     const file = files.file;
-    
+
     if (!file) {
       console.error('No file received!');
       return res.status(400).json({ message: 'No file received!' });
@@ -52,13 +51,11 @@ export default async function handler(req, res) {
     }
 
     try {
-      // ✅ Upload into "uploads/" folder inside Supabase bucket
       const { data, error } = await supabase
         .storage
         .from(process.env.SUPABASE_BUCKET)
         .upload(`uploads/${file.originalFilename}`, fs.createReadStream(filePath), {
           contentType: file.mimetype,
-          upsert: true, // Optional: allows overwriting if filename already exists
         });
 
       if (error) {
