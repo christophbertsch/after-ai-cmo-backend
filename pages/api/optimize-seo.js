@@ -1,16 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
-import Papa from 'papaparse';
 import xml2js from 'xml2js';
-import * as XLSX from 'xlsx';
+import OpenAI from 'openai';
+import { QdrantClient } from '@qdrant/js-client-rest';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const qdrant = new QdrantClient({ url: process.env.QDRANT_URL, apiKey: process.env.QDRANT_API_KEY });
+
 export const config = {
   api: { bodyParser: false },
 };
+
+async function generateEmbedding(text) {
+  const embeddingResponse = await openai.embeddings.create({
+    model: 'text-embedding-ada-002',
+    input: text,
+  });
+  return embeddingResponse.data[0].embedding;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
@@ -18,81 +29,72 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
     const { data, error } = await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error || !data.length) {
-      console.error('Supabase list error:', error);
-      return res.status(404).json({ message: 'No files found.' });
-    }
+    if (error || !data.length) return res.status(404).json({ message: 'No files found.' });
 
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
     const response = await fetch(fileUrl, { duplex: 'half' });
 
     const buffer = await response.arrayBuffer();
+    const text = Buffer.from(buffer).toString('utf-8');
 
-    let products = [];
+    const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
+    const items = parsed?.PIES?.Items?.Item || [];
 
-    if (latestFile.name.endsWith('.csv')) {
-      const text = Buffer.from(buffer).toString('utf-8');
-      const parsed = Papa.parse(text, { header: true });
-      products = parsed.data.map(({ article_number, short_description, brand }) => ({
-        ProductID: article_number,
-        ShortText: short_description,
-        Manufacturer: brand,
-      }));
-    } else if (latestFile.name.endsWith('.xml')) {
-      const text = Buffer.from(buffer).toString('utf-8');
-      const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-      const items = parsed?.PIES?.Items?.Item || [];
-      products = Array.isArray(items) ? items.map(item => ({
+    const products = Array.isArray(items) ? items : [items];
+
+    const optimizedProducts = [];
+
+    for (const item of products) {
+      const originalDesc = item.PartTerminologyID || '';
+      const embedding = await generateEmbedding(originalDesc);
+
+      const searchResult = await qdrant.search('products', {
+        vector: embedding,
+        limit: 1,
+      });
+
+      const optimizedDescription = searchResult.length
+        ? searchResult[0].payload.optimizedDescription
+        : originalDesc;
+
+      optimizedProducts.push({
         ProductID: item.PartNumber || '',
-        ShortText: item.PartTerminologyID || '',
+        OriginalDescription: originalDesc,
+        OptimizedDescription: optimizedDescription,
         Manufacturer: item.BrandLabel || '',
-        GTIN: item.ItemLevelGTIN || '',
-        HazardousMaterial: item.HazardousMaterialCode || '',
-        ExtendedInformation: item.ExtendedInformation || '',
-        ProductAttributes: item.ProductAttributes || '',
-        PartInterchangeInfo: item.PartInterchangeInfo || '',
-        DigitalAssets: item.DigitalAssets || '',
-      })) : [];
-    } else if (latestFile.name.endsWith('.xlsx')) {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(sheet);
-      products = rows.map(row => ({
-        ProductID: row.article_number || '',
-        ShortText: row.short_description || '',
-        Manufacturer: row.brand || '',
-      }));
+      });
     }
 
-    const totalProducts = products.length;
-    const changesMade = totalProducts;
-    const seoImprovementEstimate = `${Math.round((changesMade / totalProducts) * 100)}%`;
+    const seoFileName = `seo-optimized-catalog-${Date.now()}.json`;
+    const { error: uploadError } = await supabase.storage
+      .from(process.env.SUPABASE_BUCKET)
+      .upload(`seo/${seoFileName}`, JSON.stringify(optimizedProducts, null, 2), {
+        contentType: 'application/json',
+        duplex: 'half',
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
 
     res.status(200).json({
-      seo: products,
+      seo: optimizedProducts,
       report: {
-        totalProducts,
-        changesMade,
-        seoImprovementEstimate,
+        totalProducts: products.length,
+        optimizedCount: optimizedProducts.length,
+        optimizedFile: seoFileName,
       },
     });
   } catch (error) {
     console.error('SEO optimization error:', error);
-    res.status(500).json({ message: 'SEO optimization failed' });
+    res.status(500).json({ message: 'SEO optimization failed', error: error.message });
   }
 }
