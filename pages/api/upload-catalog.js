@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import formidable from 'formidable';
+import { IncomingForm } from 'formidable';
 import fs from 'fs';
 
 export const config = {
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-  const form = new formidable.IncomingForm();
+  const form = new IncomingForm();
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
