@@ -60,6 +60,12 @@ export default async function handler(req, res) {
         ProductID: item.PartNumber || '',
         ShortText: item.PartTerminologyID || '',
         Manufacturer: item.BrandLabel || '',
+        GTIN: item.ItemLevelGTIN || '',
+        HazardousMaterial: item.HazardousMaterialCode || '',
+        ExtendedInformation: item.ExtendedInformation || '',
+        ProductAttributes: item.ProductAttributes || '',
+        PartInterchangeInfo: item.PartInterchangeInfo || '',
+        DigitalAssets: item.DigitalAssets || '',
       })) : [];
     } else if (latestFile.name.endsWith('.xlsx')) {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -74,8 +80,8 @@ export default async function handler(req, res) {
     }
 
     const totalProducts = products.length;
-    const changesMade = totalProducts; // Assuming every product potentially needed SEO improvement
-    const seoImprovementEstimate = `${Math.round((changesMade / totalProducts) * 100)}%`; // Simple example calculation
+    const changesMade = totalProducts;
+    const seoImprovementEstimate = `${Math.round((changesMade / totalProducts) * 100)}%`;
 
     res.status(200).json({
       seo: products,
