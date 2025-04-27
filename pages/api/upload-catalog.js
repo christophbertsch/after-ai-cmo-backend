@@ -1,6 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
+// Allow CORS
+res.setHeader('Access-Control-Allow-Credentials', true);
+res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
+res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
+
+// Handle preflight requests
+if (req.method === 'OPTIONS') {
+  res.status(200).end();
+  return;
+}
+
 import path from 'path';
 import xml2js from 'xml2js';
 
