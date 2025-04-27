@@ -1,4 +1,4 @@
-import { formidable } from 'formidable';
+import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
@@ -20,6 +20,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
 
+  // Preflight
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const form = formidable({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
+  const form = new IncomingForm({ multiples: false, keepExtensions: true, uploadDir: '/tmp' });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
@@ -37,14 +38,14 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: 'Upload failed during file parse' });
     }
 
-    const uploadedFile = files.file; // Formidable v3 returns an array sometimes
+    const file = files.file;
 
-    if (!uploadedFile) {
+    if (!file) {
       console.error('No file received!');
       return res.status(400).json({ message: 'No file received!' });
     }
 
-    const filePath = uploadedFile.filepath || uploadedFile[0]?.filepath || uploadedFile[0]?.path;
+    const filePath = file.filepath || file.path;
 
     if (!filePath) {
       console.error('No filePath found!');
@@ -55,8 +56,8 @@ export default async function handler(req, res) {
       const { data, error } = await supabase
         .storage
         .from(process.env.SUPABASE_BUCKET)
-        .upload(`uploads/${uploadedFile.originalFilename}`, fs.createReadStream(filePath), {
-          contentType: uploadedFile.mimetype,
+        .upload(`uploads/${file.originalFilename}`, fs.createReadStream(filePath), {
+          contentType: file.mimetype,
         });
 
       if (error) {
