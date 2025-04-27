@@ -69,11 +69,17 @@ export default async function handler(req, res) {
         : originalDesc;
 
       optimizedProducts.push({
-        ProductID: item.PartNumber || '',
-        OriginalDescription: originalDesc,
-        OptimizedDescription: optimizedDescription,
-        Manufacturer: item.BrandLabel || '',
-      });
+  ProductID: item.PartNumber || '',
+  OriginalDescription: originalDesc,
+  OptimizedDescription: optimizedDescription,
+  Manufacturer: item.BrandLabel || '',
+  GTIN: item.ItemLevelGTIN || '',
+  HazardousMaterial: item.HazardousMaterialCode || '',
+  ExtendedInformation: item.ExtendedInformation || '',
+  ProductAttributes: item.ProductAttributes || '',
+  PartInterchangeInfo: item.PartInterchangeInfo || '',
+  DigitalAssets: item.DigitalAssets || '',
+});
     }
 
     const seoFileName = `seo-optimized-catalog-${Date.now()}.json`;
