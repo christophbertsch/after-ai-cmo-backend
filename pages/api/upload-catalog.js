@@ -38,9 +38,12 @@ export default async function handler(req, res) {
 
     const fileStream = fs.createReadStream(filePath);
 
+    const fileName = file.originalFilename || file.newFilename || file.name;
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9.-_]/g, "_");
+
     const { data, error } = await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
-      .upload(`uploads/${file.originalFilename}`, fileStream, {
+      .upload(`uploads/${safeFileName}`, fileStream, {
         contentType: file.mimetype,
         cacheControl: '3600',
         upsert: true,
