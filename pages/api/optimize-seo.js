@@ -47,14 +47,15 @@ export default async function handler(req, res) {
     const text = Buffer.from(buffer).toString('utf-8');
 
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-   let items = parsed?.PIES?.Items?.Item || [];
-items = Array.isArray(items) ? items : [items];
 
-console.log('Parsed items count:', items.length); // Debugging line explicitly added
+    let items = parsed?.PIES?.Items?.Item || [];
+    items = Array.isArray(items) ? items : [items];
+
+    console.log('Parsed items count:', items.length); // Debugging line explicitly added
 
     const optimizedProducts = [];
 
-    for (const item of products) {
+    for (const item of items) {
       const originalDesc = item.PartTerminologyID || '';
       const embedding = await generateEmbedding(originalDesc);
 
@@ -89,9 +90,9 @@ console.log('Parsed items count:', items.length); // Debugging line explicitly a
     res.status(200).json({
       seo: optimizedProducts,
       report: {
-         totalProducts: optimizedProducts.length,
-    changesMade: optimizedProducts.length, // This exact key is needed!
-    optimizedFile: seoFileName,
+        totalProducts: optimizedProducts.length,
+        changesMade: optimizedProducts.length,
+        optimizedFile: seoFileName,
       },
     });
   } catch (error) {
