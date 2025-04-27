@@ -47,9 +47,10 @@ export default async function handler(req, res) {
     const text = Buffer.from(buffer).toString('utf-8');
 
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-    const items = parsed?.PIES?.Items?.Item || [];
+   let items = parsed?.PIES?.Items?.Item || [];
+items = Array.isArray(items) ? items : [items];
 
-    const products = Array.isArray(items) ? items : [items];
+console.log('Parsed items count:', items.length); // Debugging line explicitly added
 
     const optimizedProducts = [];
 
