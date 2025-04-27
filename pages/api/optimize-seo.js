@@ -23,6 +23,39 @@ async function generateEmbedding(text) {
   return embeddingResponse.data[0].embedding;
 }
 
+async function optimizeProducts(items, limit = items.length) {
+  const optimizedProducts = [];
+
+  for (const item of items.slice(0, limit)) {
+    const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''}`.trim();
+    const embedding = await generateEmbedding(originalDesc);
+
+    const searchResult = await qdrant.search('after_ai_products', {
+      vector: embedding,
+      limit: 1,
+    });
+
+    const optimizedDescription = searchResult.length
+      ? searchResult[0].payload.optimizedDescription
+      : originalDesc;
+
+    optimizedProducts.push({
+      ProductID: item.PartNumber || '',
+      OriginalDescription: originalDesc,
+      OptimizedDescription: optimizedDescription,
+      Manufacturer: item.BrandLabel || '',
+      GTIN: item.ItemLevelGTIN || '',
+      HazardousMaterial: item.HazardousMaterialCode || '',
+      ExtendedInformation: item.ExtendedInformation || '',
+      ProductAttributes: item.ProductAttributes || '',
+      PartInterchangeInfo: item.PartInterchangeInfo || '',
+      DigitalAssets: item.DigitalAssets || '',
+    });
+  }
+
+  return optimizedProducts;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -33,6 +66,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
+    const { optimizeAll } = req.query;
+
     const { data, error } = await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
@@ -51,36 +86,9 @@ export default async function handler(req, res) {
     let items = parsed?.PIES?.Items?.Item || [];
     items = Array.isArray(items) ? items : [items];
 
-    console.log('Parsed items count:', items.length); // Debugging line explicitly added
+    console.log('Parsed items count:', items.length);
 
-    const optimizedProducts = [];
-
-    for (const item of items) {
-      const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''}`.trim();
-      const embedding = await generateEmbedding(originalDesc);
-
-      const searchResult = await qdrant.search('after_ai_products', {
-        vector: embedding,
-        limit: 1,
-      });
-
-      const optimizedDescription = searchResult.length
-        ? searchResult[0].payload.optimizedDescription
-        : originalDesc;
-
-      optimizedProducts.push({
-  ProductID: item.PartNumber || '',
-  OriginalDescription: originalDesc,
-  OptimizedDescription: optimizedDescription,
-  Manufacturer: item.BrandLabel || '',
-  GTIN: item.ItemLevelGTIN || '',
-  HazardousMaterial: item.HazardousMaterialCode || '',
-  ExtendedInformation: item.ExtendedInformation || '',
-  ProductAttributes: item.ProductAttributes || '',
-  PartInterchangeInfo: item.PartInterchangeInfo || '',
-  DigitalAssets: item.DigitalAssets || '',
-});
-    }
+    const optimizedProducts = await optimizeProducts(items, optimizeAll ? items.length : 10);
 
     const seoFileName = `seo-optimized-catalog-${Date.now()}.json`;
     const { error: uploadError } = await supabase.storage
@@ -96,8 +104,8 @@ export default async function handler(req, res) {
     res.status(200).json({
       seo: optimizedProducts,
       report: {
-        totalProducts: optimizedProducts.length,
-        changesMade: optimizedProducts.length,
+        totalProducts: items.length,
+        optimizedCount: optimizedProducts.length,
         optimizedFile: seoFileName,
       },
     });
