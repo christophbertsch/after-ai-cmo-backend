@@ -1,20 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-import { IncomingForm } from 'formidable';
+import formidable from 'formidable';
 import fs from 'fs';
-// Allow CORS
-res.setHeader('Access-Control-Allow-Credentials', true);
-res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
-res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
-
-// Handle preflight requests
-if (req.method === 'OPTIONS') {
-  res.status(200).end();
-  return;
-}
-
-import path from 'path';
-import xml2js from 'xml2js';
+import { createClient } from '@supabase/supabase-js';
 
 export const config = {
   api: {
@@ -27,19 +13,23 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-async function parseXMLFile(filePath) {
-  const xml = fs.readFileSync(filePath, 'utf-8');
-  const parser = new xml2js.Parser();
-  const result = await parser.parseStringPromise(xml);
-  return result;
-}
-
 export default async function handler(req, res) {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const form = new IncomingForm({ multiples: false });
+  const form = new formidable.IncomingForm({ multiples: false });
   form.uploadDir = '/tmp';
   form.keepExtensions = true;
 
@@ -52,31 +42,18 @@ export default async function handler(req, res) {
     const file = files.file;
     const tempPath = file.filepath;
 
-    console.log('Parsing uploaded file:', file.originalFilename);
+    const { data, error } = await supabase
+      .storage
+      .from(process.env.SUPABASE_BUCKET)
+      .upload(file.originalFilename, fs.createReadStream(tempPath), {
+        contentType: file.mimetype,
+      });
 
-    try {
-      const parsedData = await parseXMLFile(tempPath);
-
-      // Example: parse articles from BMEcat
-      const articles = parsedData?.BMECAT?.T_NEW_CATALOG?.[0]?.ARTICLE || [];
-      const total = articles.length;
-
-      let processed = 0;
-
-      for (const article of articles) {
-        processed++;
-
-        if (processed % 50 === 0 || processed === total) {
-          console.log(`Processed ${processed} of ${total} products`);
-        }
-
-        // Here you could upload each product info to Supabase, Airtable, etc.
-      }
-
-      return res.status(200).json({ message: `Uploaded successfully! Processed ${total} products.` });
-    } catch (error) {
-      console.error('Parsing error:', error);
-      return res.status(500).json({ message: 'Error parsing XML' });
+    if (error) {
+      console.error('Supabase upload error:', error);
+      return res.status(500).json({ message: 'Supabase upload failed' });
     }
+
+    res.status(200).json({ message: 'Upload successful!' });
   });
 }
