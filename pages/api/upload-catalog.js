@@ -1,22 +1,23 @@
-// api/upload-catalog.js
 import { createClient } from '@supabase/supabase-js';
-const formidable = require('formidable');
-const fs = require('fs');
+import formidable from 'formidable';
+import fs from 'fs';
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
@@ -32,17 +33,18 @@ export default async function handler(req, res) {
     const filePath = file.filepath || file.path;
 
     if (!filePath) {
-      console.error('No filePath found!');
-      return res.status(500).json({ message: 'Uploaded file is missing path' });
+      return res.status(400).json({ message: 'Uploaded file path missing.' });
     }
 
-    const { data, error } = await supabase
-      .storage
+    const fileStream = fs.createReadStream(filePath);
+
+    const { data, error } = await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
-      .upload(`uploads/${file.originalFilename}`, fs.createReadStream(filePath), {
+      .upload(`uploads/${file.originalFilename}`, fileStream, {
         contentType: file.mimetype,
         cacheControl: '3600',
-        upsert: true
+        upsert: true,
+        duplex: 'half'
       });
 
     if (error) {
