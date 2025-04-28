@@ -11,18 +11,14 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
-    const { filename, contentType } = req.body;
+    const { filename } = req.body;
 
-    if (!filename || !contentType) {
-      return res.status(400).json({ message: 'Missing filename or contentType' });
+    if (!filename) {
+      return res.status(400).json({ message: 'Missing filename' });
     }
 
     const { data, error } = await supabase
