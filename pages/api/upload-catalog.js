@@ -7,10 +7,24 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // --- Start CORS LOGGING ---
+  console.log('--- Incoming Request ---');
+  console.log('Origin:', req.headers.origin);
+  console.log('Method:', req.method);
+  console.log('Headers:', req.headers);
+
   res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  console.log('--- Setting CORS Headers ---');
+  console.log('Access-Control-Allow-Origin:', res.getHeader('Access-Control-Allow-Origin'));
+  console.log('Access-Control-Allow-Methods:', res.getHeader('Access-Control-Allow-Methods'));
+  console.log('Access-Control-Allow-Headers:', res.getHeader('Access-Control-Allow-Headers'));
+  console.log('Access-Control-Allow-Credentials:', res.getHeader('Access-Control-Allow-Credentials'));
+  console.log('----------------------------');
+  // --- End CORS LOGGING ---
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
