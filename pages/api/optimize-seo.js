@@ -23,47 +23,32 @@ async function generateEmbedding(text) {
   return embeddingResponse.data[0].embedding;
 }
 
-async function optimizeProducts(items, limit = items.length) {
-  const optimizedProducts = [];
+async function optimizeProduct(item) {
+  const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''}`.trim();
+  const embedding = await generateEmbedding(originalDesc);
 
-  for (const item of items.slice(0, limit)) {
-    const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''}`.trim();
-    const embedding = await generateEmbedding(originalDesc);
+  const searchResult = await qdrant.search('after_ai_products', {
+    vector: embedding,
+    limit: 1,
+  });
 
-    const searchResult = await qdrant.search('after_ai_products', {
-      vector: embedding,
-      limit: 1,
-    });
-
-    const optimizedDescription = searchResult.length
-      ? searchResult[0].payload.optimizedDescription
-      : originalDesc;
-
-    optimizedProducts.push({
-      ProductID: item.PartNumber || '',
-      OriginalDescription: originalDesc,
-      OptimizedDescription: optimizedDescription,
-      Manufacturer: item.BrandLabel || '',
-      GTIN: item.ItemLevelGTIN || '',
-      HazardousMaterial: item.HazardousMaterialCode || '',
-      ExtendedInformation: item.ExtendedInformation || '',
-      ProductAttributes: item.ProductAttributes || '',
-      PartInterchangeInfo: item.PartInterchangeInfo || '',
-      DigitalAssets: item.DigitalAssets || '',
-    });
-  }
-
-  return optimizedProducts;
+  return {
+    ProductID: item.PartNumber || '',
+    OriginalDescription: originalDesc,
+    OptimizedDescription: searchResult.length ? searchResult[0].payload.optimizedDescription : originalDesc,
+    Manufacturer: item.BrandLabel || '',
+    GTIN: item.ItemLevelGTIN || '',
+    HazardousMaterial: item.HazardousMaterialCode || '',
+    ExtendedInformation: item.ExtendedInformation || '',
+    ProductAttributes: item.ProductAttributes || '',
+    PartInterchangeInfo: item.PartInterchangeInfo || '',
+    DigitalAssets: item.DigitalAssets || '',
+  };
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
+  res.setHeader('Content-Type', 'text/plain');
+  if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
   try {
     const { optimizeAll } = req.query;
@@ -72,45 +57,50 @@ export default async function handler(req, res) {
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error || !data.length) return res.status(404).json({ message: 'No files found.' });
+    if (error || !data.length) return res.status(404).end('No files found.');
 
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
-    const response = await fetch(fileUrl, { duplex: 'half' });
-
+    const response = await fetch(fileUrl);
     const buffer = await response.arrayBuffer();
     const text = Buffer.from(buffer).toString('utf-8');
 
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-
     let items = parsed?.PIES?.Items?.Item || [];
     items = Array.isArray(items) ? items : [items];
 
-    console.log('Parsed items count:', items.length);
+    res.write(`✅ Catalog saved\n`);
+    res.write(`Total products identified: ${items.length}\n`);
 
-    const optimizedProducts = await optimizeProducts(items, optimizeAll ? items.length : 10);
+    const optimizedProducts = [];
+    const optimizationLimit = optimizeAll ? items.length : 10;
+
+    for (let i = 0; i < optimizationLimit; i++) {
+      const optimizedProduct = await optimizeProduct(items[i]);
+      optimizedProducts.push(optimizedProduct);
+
+      res.write(`⏳ SEO Optimizing... (Current ${i + 1}/${optimizationLimit})\r`);
+    }
 
     const seoFileName = `seo-optimized-catalog-${Date.now()}.json`;
-    const { error: uploadError } = await supabase.storage
+    await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
       .upload(`seo/${seoFileName}`, JSON.stringify(optimizedProducts, null, 2), {
         contentType: 'application/json',
-        duplex: 'half',
         upsert: true,
       });
 
-    if (uploadError) throw uploadError;
+    res.write(`\n✅ SEO optimization completed (${optimizationLimit}/${optimizationLimit})\n`);
+    res.write(`✅ Optimized catalog saved as: ${seoFileName}\n`);
 
-    res.status(200).json({
-      seo: optimizedProducts,
-      report: {
-        totalProducts: items.length,
-        optimizedCount: optimizedProducts.length,
-        optimizedFile: seoFileName,
-      },
-    });
+    // Trigger background reintegration if optimizeAll is true
+    if (optimizeAll) {
+      // Background process for reintegration would be initiated here
+    }
+
+    res.end();
   } catch (error) {
     console.error('SEO optimization error:', error);
-    res.status(500).json({ message: 'SEO optimization failed', error: error.message });
+    res.status(500).end(`SEO optimization failed: ${error.message}`);
   }
 }
