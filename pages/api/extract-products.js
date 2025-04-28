@@ -7,6 +7,11 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
@@ -22,7 +27,7 @@ export default async function handler(req, res) {
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
 
-    const response = await fetch(fileUrl, { duplex: 'half' }); // Node 22 needs duplex
+    const response = await fetch(fileUrl, { duplex: 'half' });
     const text = await response.text();
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
 
