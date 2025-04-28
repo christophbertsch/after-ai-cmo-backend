@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import xml2js from 'xml2js';
+import { detectCatalogType } from '../../utils/detectCatalogType';
+import { parsePIESCatalog } from '../../utils/piesParser';
+import { parseBMEcatCatalog } from '../../utils/bmecatParser';
 import OpenAI from 'openai';
 import { QdrantClient } from '@qdrant/js-client-rest';
 
@@ -23,21 +25,11 @@ async function generateEmbedding(text) {
   return embeddingResponse.data[0].embedding;
 }
 
-async function optimizeProducts(items, limit = items.length) {
+async function optimizeProducts(products, limit = products.length) {
   const optimizedProducts = [];
 
-  for (const item of items.slice(0, limit)) {
-    const attributesText = item.ProductAttributes
-      ? Object.values(item.ProductAttributes).map(attr => `${attr.Name || ''} ${attr.Value || ''}`).join(' ')
-      : '';
-
-    const interchangeText = item.PartInterchangeInfo
-      ? Object.values(item.PartInterchangeInfo).map(info => `${info.OEBrand || ''} ${info.OEPartNumber || ''}`).join(' ')
-      : '';
-
-    const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''} ${attributesText} ${interchangeText}`.trim();
-
-    const embedding = await generateEmbedding(originalDesc);
+  for (const product of products.slice(0, limit)) {
+    const embedding = await generateEmbedding(product.OriginalDescription);
 
     const searchResult = await qdrant.search('after_ai_products', {
       vector: embedding,
@@ -45,16 +37,8 @@ async function optimizeProducts(items, limit = items.length) {
     });
 
     optimizedProducts.push({
-      ProductID: item.PartNumber || '',
-      OriginalDescription: originalDesc,
-      OptimizedDescription: searchResult.length ? searchResult[0].payload.optimizedDescription : originalDesc,
-      Manufacturer: item.BrandLabel || '',
-      GTIN: item.ItemLevelGTIN || '',
-      HazardousMaterial: item.HazardousMaterialCode || '',
-      ExtendedInformation: item.ExtendedInformation || '',
-      ProductAttributes: item.ProductAttributes || '',
-      PartInterchangeInfo: item.PartInterchangeInfo || '',
-      DigitalAssets: item.DigitalAssets || '',
+      ...product,
+      OptimizedDescription: searchResult.length ? searchResult[0].payload.optimizedDescription : product.OriginalDescription,
     });
   }
 
@@ -77,26 +61,37 @@ export default async function handler(req, res) {
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error || !data.length) return res.status(404).json({ message: 'No files found.' });
+    if (error || !data.length) {
+      return res.status(404).json({ message: 'No catalog files found.' });
+    }
 
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
 
-    const response = await fetch(fileUrl, { duplex: 'half' }); // <-- FIXED
+    const response = await fetch(fileUrl, { duplex: 'half' });
     const buffer = await response.arrayBuffer();
     const text = Buffer.from(buffer).toString('utf-8');
 
-    const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
+    // ✨ Detect Catalog Type
+    const catalogType = await detectCatalogType(text);
 
-    let items = parsed?.PIES?.Items?.Item || [];
-    if (!Array.isArray(items)) items = [items];
+    let products = [];
 
-    const optimizedProducts = await optimizeProducts(items, optimizeAll ? items.length : 10);
+    if (catalogType === 'PIES') {
+      products = await parsePIESCatalog(text);
+    } else if (catalogType === 'BMEcat') {
+      products = await parseBMEcatCatalog(text);
+    } else {
+      return res.status(400).json({ message: 'Unsupported catalog format.' });
+    }
+
+    // ✨ Optimize Products
+    const optimizedProducts = await optimizeProducts(products, optimizeAll ? products.length : 10);
 
     res.status(200).json({
       seo: optimizedProducts,
       report: {
-        totalProducts: items.length,
+        totalProducts: products.length,
         optimizedCount: optimizedProducts.length,
       },
     });
