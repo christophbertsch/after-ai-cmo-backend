@@ -7,9 +7,10 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -26,7 +27,6 @@ export default async function handler(req, res) {
     const file = files.file[0] || files.file;
     const filePath = file.filepath || file.path;
     const safeFileName = (file.originalFilename || 'upload.xml').replace(/[^a-zA-Z0-9.-_]/g, "_");
-
     const fileStream = fs.createReadStream(filePath);
 
     const { data, error } = await supabase
