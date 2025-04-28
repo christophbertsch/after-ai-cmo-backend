@@ -16,13 +16,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
     const { data, error } = await supabase.storage
@@ -42,14 +37,16 @@ export default async function handler(req, res) {
     const text = Buffer.from(buffer).toString('utf-8');
 
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-    const items = parsed?.PIES?.Items?.Item || [];
 
-    const ociProducts = Array.isArray(items) ? items.map(item => ({
+    let items = parsed?.PIES?.Items?.Item || [];
+    items = Array.isArray(items) ? items : [items];
+
+    const ociProducts = items.map(item => ({
       "NEW_ITEM-MATNR": item.PartNumber || '',
       "NEW_ITEM-DESCRIPTION": item.PartTerminologyID || '',
       "NEW_ITEM-MANUFACTURER": item.BrandLabel || '',
       "NEW_ITEM-VENDORMAT": item.ItemLevelGTIN || '',
-    })) : [];
+    }));
 
     const ociCatalogJson = JSON.stringify(ociProducts, null, 2);
     const ociFileName = `oci-catalog-${Date.now()}.json`;
@@ -58,8 +55,8 @@ export default async function handler(req, res) {
       .from(process.env.SUPABASE_BUCKET)
       .upload(`oci/${ociFileName}`, ociCatalogJson, {
         contentType: 'application/json',
-        duplex: 'half',
         upsert: true,
+        duplex: 'half',
       });
 
     if (uploadError) {
@@ -67,7 +64,7 @@ export default async function handler(req, res) {
     }
 
     res.status(200).json({
-      message: 'OCI conversion completed!',
+      message: '✅ OCI conversion completed!',
       ociFile: ociFileName,
       ociProductsCount: ociProducts.length,
     });
