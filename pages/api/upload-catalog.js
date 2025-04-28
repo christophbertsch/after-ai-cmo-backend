@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('Parsing error:', err);
+      console.error('Form parsing failed:', err);
       return res.status(500).json({ message: 'Form parsing failed.' });
     }
 
@@ -37,24 +37,32 @@ export default async function handler(req, res) {
     }
 
     const fileStream = fs.createReadStream(filePath);
+    const originalFileName = file.originalFilename || file.newFilename || file.name;
+    const safeFileName = originalFileName.replace(/[^a-zA-Z0-9.-_]/g, "_");
 
-    const fileName = file.originalFilename || file.newFilename || file.name;
-    const safeFileName = fileName.replace(/[^a-zA-Z0-9.-_]/g, "_");
+    try {
+      const { data, error } = await supabase.storage
+        .from(process.env.SUPABASE_BUCKET)
+        .upload(`uploads/${safeFileName}`, fileStream, {
+          contentType: file.mimetype,
+          cacheControl: '3600',
+          upsert: true,
+          duplex: 'half'
+        });
 
-    const { data, error } = await supabase.storage
-      .from(process.env.SUPABASE_BUCKET)
-      .upload(`uploads/${safeFileName}`, fileStream, {
-        contentType: file.mimetype,
-        cacheControl: '3600',
-        upsert: true,
-        duplex: 'half'
-      });
+      fs.unlink(filePath, () => {}); // Clean up temp file asynchronously
 
-    if (error) {
-      console.error('Supabase upload error:', error);
-      return res.status(500).json({ message: error.message });
+      if (error) {
+        console.error('Supabase upload error:', error);
+        return res.status(500).json({ message: 'Supabase upload failed.', error: error.message });
+      }
+
+      return res.status(200).json({ message: '✅ Catalog uploaded successfully!', path: data.path });
+
+    } catch (uploadError) {
+      console.error('Unexpected error:', uploadError);
+      fs.unlink(filePath, () => {});
+      return res.status(500).json({ message: 'Unexpected error during upload.' });
     }
-
-    return res.status(200).json({ message: 'Uploaded successfully!', path: data.path });
   });
 }
