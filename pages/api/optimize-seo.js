@@ -62,9 +62,10 @@ async function optimizeProducts(items, limit = items.length) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
     const latestFile = data[0];
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
 
-    const response = await fetch(fileUrl, { duplex: 'half' }); // <-- FIXED HERE
+    const response = await fetch(fileUrl, { duplex: 'half' }); // <-- FIXED
     const buffer = await response.arrayBuffer();
     const text = Buffer.from(buffer).toString('utf-8');
 
