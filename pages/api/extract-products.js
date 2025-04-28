@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { detectCatalogType } from '../../utils/detectCatalogType';
 import { parsePIESCatalog } from '../../utils/piesParser';
 import { parseBMEcatCatalog } from '../../utils/bmecatParser';
+import { parseBMEcatETIMCatalog } from '../../utils/bmecatEtimParser';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -18,13 +19,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
     const { data, error } = await supabase.storage
@@ -43,7 +39,6 @@ export default async function handler(req, res) {
     const buffer = await response.arrayBuffer();
     const text = Buffer.from(buffer).toString('utf-8');
 
-    // ✨ Detect Catalog Type
     const catalogType = await detectCatalogType(text);
 
     let products = [];
@@ -52,6 +47,8 @@ export default async function handler(req, res) {
       products = await parsePIESCatalog(text);
     } else if (catalogType === 'BMEcat') {
       products = await parseBMEcatCatalog(text);
+    } else if (catalogType === 'BMEcatETIM') {
+      products = await parseBMEcatETIMCatalog(text);
     } else {
       return res.status(400).json({ message: 'Unsupported catalog format.' });
     }
