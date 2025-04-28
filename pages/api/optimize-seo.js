@@ -3,17 +3,9 @@ import xml2js from 'xml2js';
 import OpenAI from 'openai';
 import { QdrantClient } from '@qdrant/js-client-rest';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
-
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const qdrant = new QdrantClient({ url: process.env.QDRANT_URL, apiKey: process.env.QDRANT_API_KEY });
-
-export const config = {
-  api: { bodyParser: false },
-};
 
 async function generateEmbedding(text) {
   const embeddingResponse = await openai.embeddings.create({
@@ -23,20 +15,17 @@ async function generateEmbedding(text) {
   return embeddingResponse.data[0].embedding;
 }
 
-async function optimizeProducts(items, limit = items.length) {
-  const optimizedProducts = [];
-
+async function optimizeProducts(items, limit) {
+  const optimized = [];
   for (const item of items.slice(0, limit)) {
     const attributesText = item.ProductAttributes
-      ? Object.values(item.ProductAttributes).map(attr => `${attr.Name || ''} ${attr.Value || ''}`).join(' ')
+      ? Object.values(item.ProductAttributes).map(attr => `${attr.Name} ${attr.Value}`).join(' ')
       : '';
-
     const interchangeText = item.PartInterchangeInfo
-      ? Object.values(item.PartInterchangeInfo).map(info => `${info.OEBrand || ''} ${info.OEPartNumber || ''}`).join(' ')
+      ? Object.values(item.PartInterchangeInfo).map(info => `${info.OEBrand} ${info.OEPartNumber}`).join(' ')
       : '';
 
     const originalDesc = `${item.PartTerminologyID || ''} ${item.Description || ''} ${item.ExtendedInformation || ''} ${attributesText} ${interchangeText}`.trim();
-
     const embedding = await generateEmbedding(originalDesc);
 
     const searchResult = await qdrant.search('after_ai_products', {
@@ -44,82 +33,43 @@ async function optimizeProducts(items, limit = items.length) {
       limit: 1,
     });
 
-    const optimizedDescription = searchResult.length
-      ? searchResult[0].payload.optimizedDescription
-      : originalDesc;
-
-    optimizedProducts.push({
+    optimized.push({
       ProductID: item.PartNumber || '',
-      OriginalDescription: originalDesc,
-      OptimizedDescription: optimizedDescription,
-      Manufacturer: item.BrandLabel || '',
-      GTIN: item.ItemLevelGTIN || '',
-      HazardousMaterial: item.HazardousMaterialCode || '',
-      ExtendedInformation: item.ExtendedInformation || '',
-      ProductAttributes: item.ProductAttributes || '',
-      PartInterchangeInfo: item.PartInterchangeInfo || '',
-      DigitalAssets: item.DigitalAssets || '',
+      OptimizedDescription: searchResult.length ? searchResult[0].payload.optimizedDescription : originalDesc,
     });
   }
-
-  return optimizedProducts;
+  return optimized;
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   try {
-    const { optimizeAll } = req.query;
-
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabase
+      .storage
       .from(process.env.SUPABASE_BUCKET)
       .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error || !data.length) return res.status(404).json({ message: 'No files found.' });
+    if (error || !data.length) return res.status(404).json({ message: 'No catalog found.' });
 
     const latestFile = data[0];
-    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
-    const response = await fetch(fileUrl, { duplex: 'half' });
-
+    const response = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`);
     const buffer = await response.arrayBuffer();
     const text = Buffer.from(buffer).toString('utf-8');
 
     const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-
     let items = parsed?.PIES?.Items?.Item || [];
-    items = Array.isArray(items) ? items : [items];
+    if (!Array.isArray(items)) items = [items];
 
-    console.log('Parsed items count:', items.length);
-
-    const optimizedProducts = await optimizeProducts(items, optimizeAll ? items.length : 10);
-
-    const seoFileName = `seo-optimized-catalog-${Date.now()}.json`;
-    const { error: uploadError } = await supabase.storage
-      .from(process.env.SUPABASE_BUCKET)
-      .upload(`seo/${seoFileName}`, JSON.stringify(optimizedProducts, null, 2), {
-        contentType: 'application/json',
-        duplex: 'half',
-        upsert: true,
-      });
-
-    if (uploadError) throw uploadError;
+    const limit = req.query.all === 'true' ? items.length : 10;
+    const optimizedProducts = await optimizeProducts(items, limit);
 
     res.status(200).json({
-      seo: optimizedProducts,
-      report: {
-        totalProducts: items.length,
-        optimizedCount: optimizedProducts.length,
-        optimizedFile: seoFileName,
-      },
+      message: `✅ SEO optimization complete for ${optimizedProducts.length} products.`,
+      optimizedProducts,
     });
   } catch (error) {
-    console.error('SEO optimization error:', error);
-    res.status(500).json({ message: 'SEO optimization failed', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'SEO optimization failed.', error: error.message });
   }
 }
