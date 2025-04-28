@@ -7,7 +7,8 @@ export async function detectCatalogType(xmlContent) {
     if (parsed?.PIES) {
       return 'PIES';
     } else if (parsed?.BMECAT) {
-      return 'BMEcat';
+      const hasETIM = parsed.BMECAT?.T_NEW_CATALOG?.ARTICLE?.ARTICLE_FEATURES;
+      return hasETIM ? 'BMEcatETIM' : 'BMEcat';
     } else {
       return 'Unknown';
     }
