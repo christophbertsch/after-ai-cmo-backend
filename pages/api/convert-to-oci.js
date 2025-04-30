@@ -1,20 +1,13 @@
+// convert-to-oci.js
 import { createClient } from '@supabase/supabase-js';
 import xml2js from 'xml2js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
-
-export const config = {
-  api: { bodyParser: false },
-};
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://after-ai-cmo-dq14.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -22,54 +15,39 @@ export default async function handler(req, res) {
   try {
     const { data, error } = await supabase.storage
       .from(process.env.SUPABASE_BUCKET)
-      .list('uploads', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
+      .list('optimized', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error || !data.length) {
-      console.error('Supabase list error:', error);
-      return res.status(404).json({ message: 'No files found.' });
-    }
+    if (error || !data.length) return res.status(404).json({ message: 'No optimized catalog found.' });
 
     const latestFile = data[0];
-    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/uploads/${latestFile.name}`;
-    const response = await fetch(fileUrl, { duplex: 'half' });
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET}/optimized/${latestFile.name}`;
 
-    const buffer = await response.arrayBuffer();
-    const text = Buffer.from(buffer).toString('utf-8');
+    const response = await fetch(fileUrl);
+    const optimizedJson = await response.json();
 
-    const parsed = await xml2js.parseStringPromise(text, { explicitArray: false });
-
-    let items = parsed?.PIES?.Items?.Item || [];
-    items = Array.isArray(items) ? items : [items];
-
-    const ociProducts = items.map(item => ({
-      "NEW_ITEM-MATNR": item.PartNumber || '',
-      "NEW_ITEM-DESCRIPTION": item.PartTerminologyID || '',
-      "NEW_ITEM-MANUFACTURER": item.BrandLabel || '',
-      "NEW_ITEM-VENDORMAT": item.ItemLevelGTIN || '',
+    const ociRows = optimizedJson.map((item) => ({
+      'NEW_ITEM-MATNR': item.ProductID,
+      'NEW_ITEM-DESCRIPTION': item.OptimizedDescription,
+      'NEW_ITEM-MANUFACTURER': item.Manufacturer,
+      'NEW_ITEM-VENDORMAT': item.GTIN,
     }));
 
-    const ociCatalogJson = JSON.stringify(ociProducts, null, 2);
-    const ociFileName = `oci-catalog-${Date.now()}.json`;
+    const ociExport = JSON.stringify(ociRows, null, 2);
+    const ociFileName = `oci-export-${Date.now()}.json`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(process.env.SUPABASE_BUCKET)
-      .upload(`oci/${ociFileName}`, ociCatalogJson, {
-        contentType: 'application/json',
-        upsert: true,
-        duplex: 'half',
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
+    await supabase.storage.from(process.env.SUPABASE_BUCKET).upload(`oci/${ociFileName}`, ociExport, {
+      contentType: 'application/json',
+      cacheControl: '3600',
+      upsert: true,
+    });
 
     res.status(200).json({
-      message: '✅ OCI conversion completed!',
+      message: '✅ OCI export completed!',
       ociFile: ociFileName,
-      ociProductsCount: ociProducts.length,
+      totalProducts: ociRows.length,
     });
   } catch (error) {
-    console.error('OCI conversion error:', error);
-    res.status(500).json({ message: 'OCI conversion failed', error: error.message });
+    console.error('OCI export error:', error);
+    res.status(500).json({ message: 'OCI export failed', error: error.message });
   }
 }
