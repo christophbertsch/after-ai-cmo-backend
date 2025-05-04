@@ -1,11 +1,9 @@
 // catalogBridge.js
-// CLI tool: detect + parse + normalize product data from catalog
-
 const fs = require('fs');
-const path = require('path');
 const detectCatalogType = require('./detectCatalogType');
 const parseBMEcat = require('./bmecatParser');
 const parseBMEcatETIM = require('./bmecatEtimParser');
+const parseBMEcat2005 = require('./bmecat2005Parser');
 const parsePIES = require('./piesParser');
 
 async function main() {
@@ -24,10 +22,12 @@ async function main() {
       products = await parseBMEcat(raw);
     } else if (type === 'BMEcatETIM') {
       products = await parseBMEcatETIM(raw);
+    } else if (type === 'BMEcat2005') {
+      products = await parseBMEcat2005(raw);
     } else if (type === 'PIES') {
       products = await parsePIES(raw);
     } else {
-      throw new Error("Unsupported format or no parser found");
+      throw new Error("Unsupported catalog format: " + type);
     }
   } catch (e) {
     console.error(JSON.stringify({ error: e.message || e.toString() }));
